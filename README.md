@@ -9,8 +9,7 @@ install requirements.txt in /server
 # Todo
 
 ## Game actions
-- roll dice
-- add dice graphics
+- add dice graphics (On going)
 - calculate dice probability (done)
 
 ## Look at other players characters and stats
@@ -28,3 +27,4 @@ install requirements.txt in /server
 4. One character has the option to take another turn. Needed to be added
 
 ## Implement Character powers
+- Add a button (Use Character powers), add boolean in db "powerUsed"
