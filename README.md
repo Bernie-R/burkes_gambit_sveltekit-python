@@ -6,7 +6,7 @@ install requirements.txt in /server
 2. In ws_test run npm i and npm run dev
 
 
-### Todo
+# Todo
 
 ## Game actions
 - roll dice
