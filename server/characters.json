@@ -1,0 +1,38 @@
+{"Hacker":
+"One per game, you may use a reserved die of another player,",
+
+"Marine":
+"Once per game, you can choose to use your reserve die after rolling a die you drew from the dice bag. However, you cannot use both dice.",
+
+"Communications officer":
+"Once per game, you may draw any die you wish from the dice bag.",
+
+"Technician":
+"One per game, you may copy the last die played except for an engine powerup.",
+
+"Augmented":
+"Once per game, you may change the rolled result of any die, except engine power-ups, to the side of your choice.",
+
+"Captain":
+"Starts the game - Once per game, force a player to use their role ability if it haven’t been used yet.",
+
+"Security Officer":
+"Once per game, you may shoot a player and cause 1 damage.",
+
+"Doctor":
+"Once per game, you can bring someone back to life of the moment of their death.",
+
+"Personal officer":
+"Once per game, you may look at another player’s ID card.",
+
+"Manual laborer":
+"You starting and max health is increased by 1.",
+
+"Pilot":
+"Once per game, you make take an extra turn immediately after you current turn.",
+
+"Engineer":
+"Once per game, you may return an engine power-up to the dice bag or draw a die from the dice bag and use it to power up the engines."
+}
+
+
