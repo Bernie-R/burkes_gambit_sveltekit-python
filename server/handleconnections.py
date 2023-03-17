@@ -72,13 +72,8 @@ async def handle_connection(websocket, path):
             await websocket.send(data_json)
 
 
-## lobby
 
-## player join server
 
-## Start game
-
-## Actions
 
 async def check_running_server(playerName):
     pass
