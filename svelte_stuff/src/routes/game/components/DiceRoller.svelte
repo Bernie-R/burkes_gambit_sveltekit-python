@@ -3,10 +3,26 @@
 
   import { triggerRoll } from './store.js';
 
-  let sides = 6;
+  const probabilities = [0.3305785124, 0.3305785124, 0.1652892562, 0.02479338843, 0.02479338843, 0.02479338843, 0.02479338843, 0.02479338843, 0.02479338843, 0.02479338843];
 
   function roll() {
-    return Math.floor(Math.random() * sides) + 1;
+    // Generate a random number between 0 and 1
+    const rand = Math.random();
+
+    // Use the probabilities to determine the result
+    let cumulativeProb = 0;
+    let result = 0;
+
+    probabilities.some((prob, i) => {
+      cumulativeProb += prob;
+      if (rand <= cumulativeProb) {
+        result = i + 1;
+        return true;
+      }
+      return false;
+    });
+
+    return result;
   }
 
   let result = 0;
@@ -15,11 +31,9 @@
     result = roll();
   }
 </script>
-
 <div class="flex items-center justify-center h-24 w-24 mx-auto my-12 border border-gray-300 rounded-lg">
   <span class="text-6xl">{result}</span>
 </div>
-
 <style>
   * {
     font-family: Helvetica, Arial, sans-serif;

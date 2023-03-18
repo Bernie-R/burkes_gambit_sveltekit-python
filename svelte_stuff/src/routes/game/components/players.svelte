@@ -20,6 +20,10 @@
       activePlayerIndex.set(playerIndex);
     }
   }
+
+  function closeInfoBox() {
+    activePlayerIndex.set(null);
+  }
 </script>
 
 {#if players}
@@ -39,39 +43,45 @@
               <path d="M7.293 9.293a1 1 0 0 1 1.414 0L10 10.586l1.293-1.293a1 1 0 0 1 1.414 1.414l-2 2a1 1 0 0 1-1.414 0l-2-2a1 1 0 0 1 0-1.414z"/>
             </svg>
           </div>
-          {#if activePlayerIndex === i}
-            <div class="fixed inset-0 bg-black bg-opacity-50 z-20 flex justify-center items-center">
-              <div class="bg-white p-4 rounded shadow w-3/5 h-auto transform scale-125 transition-all duration-300">
-                <h1 class="text-lg font-bold mb-2">Role: {player_data.players[player].character}</h1>
-                <p class="text-gray-700">{player_data.players[player].description}</p>
-                <br>
-                <h1 class="text-lg font-bold mb-2">Team</h1>
-                <p class="text-gray-700">{player_data.players[player].team_text}</p>
-              </div>
-            </div>
-          {/if}
         </li>
       {/each}
     </ul>
   </div>
+
+  {#if $activePlayerIndex !== null}
+    <div class="fixed inset-0 bg-black bg-opacity-50 z-20 flex justify-center items-center" on:click={closeInfoBox}>
+      <div class="bg-white p-4 rounded shadow w-3/5 h-auto transform scale-125 transition-all duration-300" on:click|stopPropagation>
+        <h1 class="text-lg font-bold mb-2">Role: {player_data.players[playersArray[$activePlayerIndex]].character}</h1>
+        <p class="text-gray-700">{player_data.players[playersArray[$activePlayerIndex]].description}</p>
+      </div>
+    </div>
+  {/if}
 {/if}
-  <style>
-    .info-box {
-      position: absolute;
-      top: 100%;
-      left: 50%;
-      transform: translateX(-50%);
-      padding: 1rem;
-      background-color: white;
-      border: 1px solid black;
-      border-radius: 0.5rem;
-      box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
-      display: none;
-      z-index: 9999;
-    }
 
-    .info-box[style*="display: block"] {
-      display: block;
-    }
-  </style>
+<style>
+  .fixed {
+  z-index: 10;
+}
+  .bg-black {
+    position: fixed;
+    top: 0;
+    left: 0;
+    bottom: 0;
+    right: 0;
+    background-color: rgba(0, 0, 0, 0.5);
+    z-index: 9999;
+  }
 
+  .bg-white {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    padding: 1rem;
+    background-color: white;
+    border: 1px solid black;
+    border-radius: 0.5rem;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+    z-index: 10000;
+  }
+</style>

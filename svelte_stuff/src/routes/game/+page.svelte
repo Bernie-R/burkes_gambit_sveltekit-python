@@ -100,30 +100,7 @@
       dispatch('hidePlayers');
     }
   }
-  /*function rollDice() {
-  // Define the probabilities for each number
-  const probabilities = [0.3305785124, 0.3305785124, 0.1652892562, 0.02479338843, 0.02479338843, 0.02479338843, 0.02479338843, 0.02479338843, 0.02479338843, 0.02479338843];
-
-  // Generate a random number between 0 and 1
-  const rand = Math.random();
-
-  // Use the probabilities to determine the result
-  let cumulativeProb = 0;
-
-  probabilities.some((prob, i) => {
-    cumulativeProb += prob;
-    if (rand <= cumulativeProb) {
-      result = i + 1;
-      return true;
-    }
-    return false;
-  });
-
-  return result;
-
   
-}
-*/
 function rollDice() {
     // Set the triggerRoll store value to true
     triggerRoll.set(true);
