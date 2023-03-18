@@ -3,10 +3,12 @@
     import { createEventDispatcher } from 'svelte';
     import Cookies from "js-cookie";
     import webSocket from "$lib/websocket";
+    import { triggerRoll } from './components/store.js';
 
 
     import Players from "./components/players.svelte";
     import Character from "./components/character.svelte";
+    import Dice from "./components/DiceRoller.svelte";
 
     import "tailwindcss/tailwind.css";
     
@@ -20,7 +22,9 @@
     let players = [];
     let wsClient;
     let wsResponse;
-    let result = 0;
+    let start_data;
+    let character = "";
+    let character_text = "";
 
 
     async function waitForMessage(wsClient, type) {
@@ -48,21 +52,26 @@
     console.log("websocket connection established");
 
     playerName = Cookies.get("playerName");
-      roomName = Cookies.get("roomName");
+    roomName = Cookies.get("roomName");
 
-      console.log("test")
+    wsClient.send(JSON.stringify({ type: "gameStart", content: roomName }));
+    start_data = await waitForMessage(wsClient, "players");
 
-      wsClient.send(JSON.stringify({ type: "gameStart", content: roomName }));
+    players = Object.keys(start_data.players);
 
-      players = await waitForMessage(wsClient, "players");
+    const player = start_data.players[playerName]; // retrieve the player object based on the name
+    character = player.character; // retrieve the character property of the player
+    character_text = player.description;
 
-      console.log(players)
+
 
     wsClient.on("close", () => {
       console.log("websocket connection closed");
     });
   });
 });
+
+
 
 
     const dispatch = createEventDispatcher();
@@ -91,7 +100,7 @@
       dispatch('hidePlayers');
     }
   }
-  function rollDice() {
+  /*function rollDice() {
   // Define the probabilities for each number
   const probabilities = [0.3305785124, 0.3305785124, 0.1652892562, 0.02479338843, 0.02479338843, 0.02479338843, 0.02479338843, 0.02479338843, 0.02479338843, 0.02479338843];
 
@@ -111,10 +120,23 @@
   });
 
   return result;
+
+  
 }
+*/
+function rollDice() {
+    // Set the triggerRoll store value to true
+    triggerRoll.set(true);
+
+    // Reset the triggerRoll store value to false after a short delay
+    setTimeout(() => {
+      triggerRoll.set(false);
+    }, 100);
+  }
 
 </script>
 <!-- Header -->
+<title>Lobby: {roomName}</title>
 
 <header class="bg-gray-800 py-6 relative z-30">
   <div class="container mx-auto flex justify-between items-center px-6">
@@ -144,17 +166,14 @@
     </div>
   </div>
 
-  <div class="flex items-center justify-center h-screen">
-    <img src={dice} alt="middle image" class="h-48">
-    <p>{result}</p>
-  </div>
+  <Dice/>
 
   {#if isCharacterShown}
-    <Character/>
+    <Character character_text = {character_text} character = {character}/>
   {/if}
 
 {#if isPlayersShown}
-  <Players players = {players}/>
+  <Players players = {players}, player_data = {start_data}/>
 {/if}
 
   <div class="fixed bottom-40 left-1/2 transform -translate-x-1/2">

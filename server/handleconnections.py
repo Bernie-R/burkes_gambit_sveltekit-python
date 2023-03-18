@@ -34,7 +34,7 @@ async def handle_connection(websocket, path):
                 else:
                     # Insert the new player into the Players table
                     latest_action = datetime.datetime.now()
-                    cursor.execute(f"INSERT INTO Players (Player, Admin, roomNumber, life, infected, character, good, latestAction) VALUES ('{playerName}', 0, '{roomName}', 2, 0, NULL, 1, '{latest_action}')")
+                    cursor.execute(f"INSERT INTO Players (Player, Admin, roomNumber, life, infected, character, good, latestAction, description) VALUES ('{playerName}', 0, '{roomName}', 2, 0, NULL, 1, '{latest_action}', NULL)")
                     connection.commit()
                     await websocket.send("True")
             else:
@@ -68,11 +68,48 @@ async def handle_connection(websocket, path):
             cursor.execute(f"SELECT * FROM Players WHERE roomNumber = '{roomName}'")
             rows = cursor.fetchall()
             player_names = [row[0] for row in rows]
-            data_json = json.dumps(player_names)
+            captain_assigned = False
+            
+            # select all characters from the Character table
+            cursor.execute("SELECT * FROM Character")
+            all_characters = cursor.fetchall()
+
+            # shuffle the player names to randomize the order
+            random.shuffle(player_names)
+
+            # randomly select one character for each player, except Captain
+            assigned_characters = {}
+            for i in range(len(player_names)):
+                if not captain_assigned:
+                    # assign Captain to the first player
+                    captain_row = ("Captain",)
+                    for row in all_characters:
+                        if row[0] == "Captain":
+                            captain_row = row
+                            break
+                    character = (captain_row[0], captain_row[1])
+                    assigned_characters[player_names[i]] = {"character": character[0], "description": character[1]}
+                    captain_assigned = True
+                    all_characters.remove(captain_row)
+                else:
+                    # randomly select a character from the remaining characters
+                    character_row = random.choice(all_characters)
+                    character = (character_row[0], character_row[1])
+                    assigned_characters[player_names[i]] = {"character": character[0], "description": character[1]}
+                    all_characters.remove(character_row)
+                
+                # update the Players table with the assigned character
+                cursor.execute(f"UPDATE Players SET character='{character[0]}', description='{character[1]}' WHERE Player='{player_names[i]}'")
+                connection.commit()
+
+            # create the assigned characters dictionary
+            assigned_characters_dict = {"players": assigned_characters}
+
+            print(assigned_characters_dict)
+                
+            #Return list of players to svelte
+            data_json = json.dumps(assigned_characters_dict)
             await websocket.send(data_json)
-
-
-
 
 
 async def check_running_server(playerName):

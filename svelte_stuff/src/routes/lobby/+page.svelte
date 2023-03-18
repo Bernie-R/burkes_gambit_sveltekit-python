@@ -74,6 +74,7 @@ onMount(() => {
 
 
 </script>
+<title>Lobby: {roomName}</title>
 
     <div class="min-h-screen flex flex-col justify-center items-center bg-gray-100">
       <div class="w-11/12 sm:w-4/5 md:w-3/4 lg:w-2/3 xl:w-1/2 bg-white rounded-lg shadow-lg">
