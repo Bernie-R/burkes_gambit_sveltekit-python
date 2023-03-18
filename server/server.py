@@ -8,7 +8,7 @@ async def main():
     # Connect to the SQLite server and create the Rooms and Players databases
     connection = sqlite3.connect("server.db")
     cursor = connection.cursor()
-    cursor.execute("CREATE TABLE IF NOT EXISTS Rooms (roomNumber TEXT, serverCreated DATETIME, running INTEGER CHECK (running IN (0,1,2)))")
+    cursor.execute("CREATE TABLE IF NOT EXISTS Rooms (roomNumber TEXT, serverCreated DATETIME, running INTEGER CHECK (running IN (0,1,2)), max_lightning INTEGER)")
     cursor.execute("CREATE TABLE IF NOT EXISTS Players (Player TEXT, admin BOOLEAN, roomNumber INTEGER, life INTEGER, infected BOOLEAN, character TEXT, good BOOLEAN, latestAction DATETIME, holdingDice INTEGER NULL, description TEXT)")
     
     # Create the Character database if it does not exist

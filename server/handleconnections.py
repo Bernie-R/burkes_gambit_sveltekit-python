@@ -68,8 +68,9 @@ async def handle_connection(websocket, path):
             cursor.execute(f"SELECT * FROM Players WHERE roomNumber = '{roomName}'")
             rows = cursor.fetchall()
             player_names = [row[0] for row in rows]
+            num_players = len(player_names)
             captain_assigned = False
-            
+                    
             # select all characters from the Character table
             cursor.execute("SELECT * FROM Character")
             all_characters = cursor.fetchall()
@@ -79,7 +80,8 @@ async def handle_connection(websocket, path):
 
             # randomly select one character for each player, except Captain
             assigned_characters = {}
-            for i in range(len(player_names)):
+            used_characters = set()
+            for i in range(num_players):
                 if not captain_assigned:
                     # assign Captain to the first player
                     captain_row = ("Captain",)
@@ -92,12 +94,16 @@ async def handle_connection(websocket, path):
                     captain_assigned = True
                     all_characters.remove(captain_row)
                 else:
-                    # randomly select a character from the remaining characters
-                    character_row = random.choice(all_characters)
+                    # randomly select a character from the remaining characters (excluding Captain)
+                    available_characters = [row for row in all_characters if row[0] != "Captain" and row not in used_characters]
+                    if not available_characters:
+                        # If there are no more available characters, raise an exception
+                        raise Exception("Not enough characters for all players")
+                    character_row = random.choice(available_characters)
                     character = (character_row[0], character_row[1])
                     assigned_characters[player_names[i]] = {"character": character[0], "description": character[1]}
-                    all_characters.remove(character_row)
-                
+                    used_characters.add(character_row)
+                        
                 # update the Players table with the assigned character
                 cursor.execute(f"UPDATE Players SET character='{character[0]}', description='{character[1]}' WHERE Player='{player_names[i]}'")
                 connection.commit()
@@ -105,11 +111,56 @@ async def handle_connection(websocket, path):
             # create the assigned characters dictionary
             assigned_characters_dict = {"players": assigned_characters}
 
-            print(assigned_characters_dict)
-                
-            #Return list of players to svelte
+            # count the number of players
+            num_players = len(player_names)
+
+            # update the "good" and "infected" columns in the Players table based on the number of players
+            if num_players == 4:
+                cursor.execute(f"UPDATE Players SET good=1 WHERE roomNumber='{roomName}'")
+                random_name = random.choice(player_names)
+                cursor.execute(f"UPDATE Players SET good=0 WHERE roomNumber='{roomName}' AND Player='{random_name}'")
+                cursor.execute(f"UPDATE Players SET infected=1 WHERE roomNumber='{roomName}' AND Player='{random_name}'")
+            elif num_players == 5:
+                cursor.execute(f"UPDATE Players SET good=1 WHERE roomNumber='{roomName}'")
+                random_names = random.sample(player_names, 2)
+                cursor.execute(f"UPDATE Players SET good=0 WHERE roomNumber='{roomName}' AND Player IN {tuple(random_names)}")
+                random_name = random.choice(player_names)
+                cursor.execute(f"UPDATE Players SET infected=1 WHERE roomNumber='{roomName}' AND Player='{random_name}'")
+            elif num_players == 6:
+                cursor.execute(f"UPDATE Players SET good=1 WHERE roomNumber='{roomName}'")
+                random_names = random.sample(player_names, 2)
+                cursor.execute(f"UPDATE Players SET good=0 WHERE roomNumber='{roomName}' AND Player IN {tuple(random_names)}")
+                random_name = random.choice(player_names)
+                cursor.execute(f"UPDATE Players SET infected=1 WHERE roomNumber='{roomName}' AND Player='{random_name}'")
+            elif num_players == 7:
+                cursor.execute(f"UPDATE Players SET good=1 WHERE roomNumber='{roomName}'")
+                random_names = random.sample(player_names, 3)
+                cursor.execute(f"UPDATE Players SET good=0 WHERE roomNumber='{roomName}' AND Player IN {tuple(random_names)}")
+                random_name = random.choice(player_names)
+                cursor.execute(f"UPDATE Players SET infected=1 WHERE roomNumber='{roomName}' AND Player='{random_name}'")
+            elif num_players >= 8:
+                cursor.execute(f"UPDATE Players SET good=1 WHERE roomNumber='{roomName}'")
+                random_names = random.sample(player_names, 3)
+                cursor.execute(f"UPDATE Players SET good=0 WHERE roomNumber='{roomName}' AND Player IN {tuple(random_names)}")
+                random_name = random.choice(player_names)
+                cursor.execute(f"UPDATE Players SET infected=1 WHERE roomNumber='{roomName}' AND Player='{random_name}'")
+
+            if num_players == 4:
+                cursor.execute(f"UPDATE Rooms SET max_lightning=3 WHERE roomNumber='{roomName}'")
+            elif num_players == 5:
+                cursor.execute(f"UPDATE Rooms SET max_lightning=4 WHERE roomNumber='{roomName}'")
+            elif num_players == 6:
+                cursor.execute(f"UPDATE Rooms SET max_lightning=5 WHERE roomNumber='{roomName}'")
+            elif num_players >= 7:
+                cursor.execute(f"UPDATE Rooms SET max_lightning=6 WHERE roomNumber='{roomName}'")
+            connection.commit()
+
+            # send the assigned characters dictionary to the client
             data_json = json.dumps(assigned_characters_dict)
             await websocket.send(data_json)
+
+
+
 
 
 async def check_running_server(playerName):
