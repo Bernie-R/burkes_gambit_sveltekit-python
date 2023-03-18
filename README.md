@@ -5,6 +5,10 @@ install requirements.txt in /server
 1. In /server start server.py
 2. In ws_test run npm i and npm run dev
 
+Build and start server using docker:
+
+1. run `docker-compose up`
+2. The app will be hosted on port `8080`
 
 # Todo
 

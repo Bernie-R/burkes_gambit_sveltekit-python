@@ -1,0 +1,11 @@
+services:
+  server:
+    build:
+      context: server
+    ports:
+      - 8765:8765
+  sveltekit:
+    build:
+      context: svelte_stuff
+    ports:
+      - 8080:8080
