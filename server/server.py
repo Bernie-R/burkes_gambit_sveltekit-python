@@ -24,7 +24,7 @@ async def main():
     
     connection.commit()
     
-    async with websockets.serve(handle_connection, "localhost", 8765):
+    async with websockets.serve(handle_connection, "0.0.0.0", 8765):
         print("WebSocket server started")
         await asyncio.Future()  # Run forever
 
