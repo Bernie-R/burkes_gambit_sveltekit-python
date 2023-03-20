@@ -1,7 +1,16 @@
 import json
 from game import GameRoom
+import random
+import uuid
 
 rooms = {}
+
+def new_game_id() -> str:
+    global rooms
+    id = str(uuid.uuid4())[:4]
+    if id in rooms:
+        return new_game_id()
+    return id
 
 
 async def handle_connection(websocket, path):
@@ -15,13 +24,13 @@ async def handle_connection(websocket, path):
 
         match message["type"]:
             case "createServer":
-                game_room = GameRoom()
+                game_room = GameRoom(new_game_id())
                 game_room.add_player(message["content"])
                 rooms[game_room.id] = game_room
                 await websocket.send(game_room.id)
                 return
 
-            case "joinServer":
+            case "joinRoom":
                 data = message["content"]
                 player_name = data["playerName"]
                 room_id = data["roomName"]

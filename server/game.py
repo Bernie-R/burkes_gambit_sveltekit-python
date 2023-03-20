@@ -58,8 +58,8 @@ class Player:
 
 
 class GameRoom:
-    def __init__(self):
-        self._id = uuid.uuid4()
+    def __init__(self, id:str):
+        self._id = id
         self._running = True
         self._max_lightning = 3
         self._players: list[Player] = []
