@@ -132,9 +132,9 @@ class GameRoom:
         # assign infected player
         random.choice(self.players).set_infected(True)
 
-        assert all([p.team is not None for p in self.players])
-        assert len(set([p.role for p in self.players])) == len(self.players)
-        assert len(set([p.role for p in self.players])) == len(self.players)
+        assert all(p.team is not None for p in self.players)
+        assert len({p.role for p in self.players}) == len(self.players)
+        assert len({p.role for p in self.players}) == len(self.players)
 
         self._state = GameState.STARTED
         return

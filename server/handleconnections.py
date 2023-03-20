@@ -8,9 +8,7 @@ rooms = {}
 def new_game_id() -> str:
     global rooms
     id = str(uuid.uuid4())[:4]
-    if id in rooms:
-        return new_game_id()
-    return id
+    return new_game_id() if id in rooms else id
 
 
 async def handle_connection(websocket, path):
