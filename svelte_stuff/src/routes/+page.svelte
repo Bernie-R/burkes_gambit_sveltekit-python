@@ -60,7 +60,7 @@ const createServer = async () => {
     const data = { playerName: playerName, roomName: roomName };
     wsClient.send(JSON.stringify({ type: "joinRoom", content: data}));
     // Wait for the roomName message from the server
-    const check = await waitForMessage(wsClient, "joinroom");
+    const check = await waitForMessage(wsClient, "joinRoom");
     if (check == "True") {
       Cookies.set("playerName", playerName);
       Cookies.set("roomName", roomName);
