@@ -153,9 +153,6 @@ function rollDice() {
   <Players players = {players}, player_data = {start_data}/>
 {/if}
 
-  <div class="fixed bottom-40 left-1/2 transform -translate-x-1/2">
-    <button class="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded" on:click={rollDice}>Roll the Dice</button>
-  </div>
 </body>
 
 <!-- Style -->
