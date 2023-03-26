@@ -5,6 +5,7 @@ import uuid
 
 rooms = {}
 
+
 def new_game_id() -> str:
     global rooms
     id = str(uuid.uuid4())[:4]
@@ -23,9 +24,9 @@ async def handle_connection(websocket, path):
         match message["type"]:
             case "createServer":
                 game_room = GameRoom(new_game_id())
-                game_room.add_player(message["content"])
+                player = game_room.add_player(message["content"])
                 rooms[game_room.id] = game_room
-                await websocket.send(game_room.id)
+                await websocket.send(json.dumps(game_room.get_game_state(player)))
                 return
 
             case "joinRoom":
@@ -39,8 +40,8 @@ async def handle_connection(websocket, path):
                     return
 
                 game_room = rooms[room_id]
-                game_room.add_player(player_name)
-                await websocket.send("True")
+                player = game_room.add_player(player_name)
+                await websocket.send(json.dumps(game_room.get_game_state(player)))
                 return
 
             case "lobbyUpdate":
@@ -60,5 +61,7 @@ async def handle_connection(websocket, path):
                 room_id = message["content"]
                 game_room = rooms[room_id]
                 game_room.start_game()
-                await websocket.send(game_room.get_players_json())
+                await websocket.send(
+                    json.dumps(game_room.get_game_state(game_room.admin))
+                )
                 return
