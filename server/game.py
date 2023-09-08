@@ -194,7 +194,7 @@ class GameRoom:
             print(f"Error: not {player.name}'s turn")
             return
         if self._state != GameState.STARTED:
-            print(f"Error: game is not yet started")
+            print("Error: game is not yet started")
             return
 
         self._run_action(player, action)
