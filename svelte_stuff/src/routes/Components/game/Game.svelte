@@ -14,63 +14,14 @@
     
     import thunder from '$lib/images/thunder.png';
     import heart from '$lib/images/heart.png';
-    import dice from '$lib/images/dice.png';
 
     
     let playerName = "";
     let roomName = "";
     let players = [];
-    let wsClient;
-    let wsResponse;
     let start_data;
     let character = "";
     let character_text = "";
-
-
-    async function waitForMessage(wsClient, type) {
-      return new Promise((resolve) => {
-        const handleMessage = (event) => {
-          const data = JSON.parse(event.data);
-          resolve(data);
-        };
-        wsClient.on("message", handleMessage);
-      });
-    }
-
-    onMount(() => {
-  wsClient = webSocket();
-
-  wsClient.on("message", (event) => {
-    wsResponse = String(event.data);
-  });
-
-  wsClient.on("error", (error) => {
-    console.log("websocket error", error);
-  });
-
-  wsClient.on("open", async () => {
-    console.log("websocket connection established");
-
-    playerName = Cookies.get("playerName");
-    roomName = Cookies.get("roomName");
-
-    wsClient.send(JSON.stringify({ type: "gameStart", content: roomName }));
-    start_data = await waitForMessage(wsClient, "players");
-
-    players = Object.keys(start_data.players);
-
-    const player = start_data.players[playerName]; // retrieve the player object based on the name
-    character = player.character; // retrieve the character property of the player
-    character_text = player.description;
-
-
-
-    wsClient.on("close", () => {
-      console.log("websocket connection closed");
-    });
-  });
-});
-
 
 
 

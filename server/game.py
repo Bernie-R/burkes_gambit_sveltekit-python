@@ -135,12 +135,13 @@ class GameRoom:
     def next_turn(self):
         self._turn += 1
 
-    def add_player(self, player_name: str) -> Player:
-        player = Player(player_name)
+    def add_player(self, player_name: str, is_admin = False) -> Player:
+        player = Player(player_name, is_admin = is_admin)
         if self.players == []:
             self._admin = player
-        self.players.append(Player(player_name))
+        self.players.append(player)
         return player
+
 
     def _get_n_evil_team(self) -> int:
         match len(self.players):
@@ -243,10 +244,12 @@ class GameRoom:
     # The client can then use the state to render everything
     def get_game_state(self, player: Player) -> dict:
         return {
+            "id": self.id,
             "state": self._state.name,
             "n_power_ups": self.n_power_ups,
             "self": player.get_state(),
             "current_player": self.current_player.name,
+            
             # "current_dice": self.current_dice.get_state() if self.current_dice is not None else None,
             # "players": [p.get_state(only_public = True) for p in self.players],
         }
@@ -263,15 +266,16 @@ class GameRoom:
             }
         )
 
-    def get_lobby_json(self) -> str:
-        return json.dumps(
-            {
-                "player_list": [player.name for player in self.players],
-                "running": self._running,
-                "admin": self.admin.name,
-            }
-        )
+    def get_lobby(self) -> str:
+        return {
+            "player_list": [player.name for player in self.players],
+            "player_id_list": [player.id for player in self.players],
+            "running": self._running,
+            "admin": self.admin.name,
+            "game_state": self._state
+        }
 
+    
 
 if __name__ == "__main__":
     game = GameRoom("1")
