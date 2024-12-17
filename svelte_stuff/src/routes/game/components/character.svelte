@@ -1,5 +1,6 @@
+<!-- svelte_stuff\src\routes\game\components\character.svelte -->
 <script>
-  import { writable } from 'svelte/store';
+  import { writable } from "svelte/store";
 
   export let character_text;
   export let character;
@@ -14,38 +15,17 @@
 </script>
 
 {#if $isOpen}
-  <div class="fixed inset-0 bg-black bg-opacity-50 z-20 flex justify-center items-center" on:click={closeInfoBox}>
-    <div class="bg-white p-4 rounded shadow w-3/5 h-auto transform scale-125 transition-all duration-300" on:click|stopPropagation>
-      <h1 class="text-lg font-bold mb-2">Role: {character}</h1>
-      <p class="text-gray-700">{character_text}</p>
-      <br>
-      <h1 class="text-lg font-bold mb-2">Team</h1>
+  <div
+    class="fixed inset-0 bg-black bg-opacity-50 z-20 flex justify-center items-center px-4"
+  >
+    <div
+      class="bg-white p-6 rounded-lg shadow-lg w-full max-w-md transform scale-100 transition-transform duration-300"
+      on:click|stopPropagation
+    >
+      <h1 class="text-xl font-bold mb-3">Role: {character}</h1>
+      <p class="text-gray-700 mb-4">{character_text}</p>
+      <h2 class="text-xl font-bold mb-2">Team</h2>
       <p class="text-gray-700">{team_text}</p>
     </div>
   </div>
 {/if}
-
-<style>
-  .bg-black {
-    position: fixed;
-    top: 0;
-    left: 0;
-    bottom: 0;
-    right: 0;
-    background-color: rgba(0, 0, 0, 0.5);
-    z-index: 9999;
-  }
-
-  .bg-white {
-    position: fixed;
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%, -50%);
-    padding: 1rem;
-    background-color: white;
-    border: 1px solid black;
-    border-radius: 0.5rem;
-    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
-    z-index: 10000;
-  }
-</style>

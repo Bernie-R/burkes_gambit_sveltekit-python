@@ -1,6 +1,7 @@
 from enum import Enum
 import random
-
+import json
+import os
 
 class Face(Enum):
     DAMAGE = 1
@@ -20,7 +21,7 @@ class Dice:
         self.faces = faces
         self.current_face = faces[0]
         self.can_be_rerolled = True
-
+        self.rolled_by = None
     @property
     def face(self) -> Face:
         return self.current_face
@@ -35,80 +36,34 @@ class Dice:
 
     def reset(self):
         self.can_be_rerolled = True
+        self.rolled_by = None
 
     def get_state(self) -> dict:
         return {
             "face": self.face.name,
+            "face_value": self.face.value,
             "can_be_rerolled": self.can_be_rerolled,
-            "all_faces": self.faces,
+            "all_faces": [f.name for f in self.faces],
+            "all_faces_value": [f.value for f in self.faces],
+            "rolled_by": self.rolled_by,
         }
 
 
 class DiceBag:
     def __init__(self):
-        # TODO: Init correct dice bag
-        self.bag: list[Dice] = [
-            Dice(
-                (
-                    Face.DAMAGE,
-                    Face.PARSITE_SCAN_LR,
-                    Face.ENGINE_POWER_UP,
-                    Face.STALL_ENGINE,
-                    Face.RESHUFFLE,
-                    Face.ID_CHECK,
-                )
-            ),
-            Dice(
-                (
-                    Face.DAMAGE,
-                    Face.PARSITE_SCAN_LR,
-                    Face.ENGINE_POWER_UP,
-                    Face.STALL_ENGINE,
-                    Face.RESHUFFLE,
-                    Face.ID_CHECK,
-                )
-            ),
-            Dice(
-                (
-                    Face.DAMAGE,
-                    Face.PARSITE_SCAN_LR,
-                    Face.ENGINE_POWER_UP,
-                    Face.STALL_ENGINE,
-                    Face.RESHUFFLE,
-                    Face.ID_CHECK,
-                )
-            ),
-            Dice(
-                (
-                    Face.DAMAGE,
-                    Face.PARSITE_SCAN_LR,
-                    Face.ENGINE_POWER_UP,
-                    Face.STALL_ENGINE,
-                    Face.RESHUFFLE,
-                    Face.ID_CHECK,
-                )
-            ),
-            Dice(
-                (
-                    Face.DAMAGE,
-                    Face.PARSITE_SCAN_LR,
-                    Face.ENGINE_POWER_UP,
-                    Face.STALL_ENGINE,
-                    Face.RESHUFFLE,
-                    Face.ID_CHECK,
-                )
-            ),
-            Dice(
-                (
-                    Face.DAMAGE,
-                    Face.PARSITE_SCAN_LR,
-                    Face.ENGINE_POWER_UP,
-                    Face.STALL_ENGINE,
-                    Face.RESHUFFLE,
-                    Face.ID_CHECK,
-                )
-            ),
-        ]
+        dice_data_path = os.path.join(os.path.dirname(__file__), "diceData.json")
+        with open(dice_data_path, "r", encoding="utf-8-sig") as f:
+           dice_data = json.load(f)
+        self.bag: list[Dice] = self._create_dice_from_config(dice_data)
+
+    def _create_dice_from_config(self, dice_data) -> list[Dice]:
+       dice_list = []
+       for dice_config in dice_data["dice"]:
+           faces = tuple(Face(side) for side in dice_config["sides"])
+           dice_list.append(Dice(faces))
+       return dice_list
+            
+
 
     def pick_dice(self) -> Dice:
         random.shuffle(self.bag)

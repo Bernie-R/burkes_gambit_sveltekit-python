@@ -1,15 +1,30 @@
 <script>
-  import { onMount } from "svelte";
-  import { goto } from '$app/navigation';
+  import { onMount, onDestroy } from "svelte";
+  import { goto } from "$app/navigation";
+  import { playerNameStore, roomNameStore } from "./store";
   import "tailwindcss/tailwind.css";
-  import Cookies from 'js-cookie'
-  import webSocket from "$lib/websocket";
-
+  import webSocket, { waitForMessage } from "$lib/websocket";
+  import { socketData } from "$lib/websocket";
+  import { Alert } from "flowbite-svelte";
 
   let playerName = "";
-  let wsClient;
-  let wsResponse = "";
   let roomName = "";
+  let wsClient;
+  let response;
+  let unsubSocketData = () => {};
+  let playerData;
+  let errorMessage = ""; // For displaying error popup
+  let showPopup = false;
+
+  //Function to handle name restriction length
+  const handleRoomNameChange = (event) => {
+    const value = event.target.value;
+    if (value.length <= 4) {
+      roomName = value;
+    } else {
+      roomName = value.slice(0, 4);
+    }
+  };
 
   const handleSubmit = (event) => {
     event.preventDefault();
@@ -17,61 +32,73 @@
 
   onMount(() => {
     wsClient = webSocket();
-
-    wsClient.on("message", (event) => {
-      wsResponse = String(event.data);
-    });
-
-    wsClient.on("error", (error) => {
-      console.log("websocket error", error);
-    });
-
-    wsClient.on("open", () => {
-      console.log("websocket connection established");
-    });
-
-    wsClient.on("close", () => {
-      console.log("websocket connection closed");
+    unsubSocketData = socketData.subscribe((data) => {
+      if (data) {
+        try {
+          playerData = JSON.parse(data);
+        } catch (error) {
+          console.error("Error parsing JSON:", error);
+        }
+      }
     });
   });
 
-  function waitForMessage(wsClient, type) {
-  return new Promise((resolve) => {
-    const handleMessage = (event) => {
-      const data = event.data;
-      resolve(data);
-    };
-    wsClient.on("message", handleMessage);
+  onDestroy(() => {
+    unsubSocketData();
   });
-}
 
-const createServer = async () => {
-  wsClient.send(JSON.stringify({ type: "createServer", content: playerName }));
+  const createServer = async () => {
+    wsClient.send(
+      JSON.stringify({ type: "createServer", content: playerName }),
+    );
 
-  // Wait for the roomName message from the server
-  const roomName = await waitForMessage(wsClient, "roomName");
+    const data = await waitForMessage("createServer");
+    wsClient.off("message", (event) => {}); // Clean up message listener.
 
-  Cookies.set("playerName", playerName);
-  Cookies.set("roomName", roomName);
-  goto("/lobby");
-};
+    if (data) {
+      const response = data.content;
+      const roomName = response.roomId;
+      // Update the stores
+      playerNameStore.set(playerName);
+      roomNameStore.set(roomName);
 
-  const joinRoom = async () => {
-    const data = { playerName: playerName, roomName: roomName };
-    wsClient.send(JSON.stringify({ type: "joinRoom", content: data}));
-    // Wait for the roomName message from the server
-    const check = await waitForMessage(wsClient, "joinRoom");
-    if (check == "True") {
-      Cookies.set("playerName", playerName);
-      Cookies.set("roomName", roomName);
+      // Navigate to the lobby page
       goto("/lobby");
     }
   };
 
+  const joinRoom = async () => {
+    const data = { playerName: playerName, roomName: roomName };
+    wsClient.send(JSON.stringify({ type: "joinRoom", content: data }));
+
+    const playerData = await waitForMessage("joinRoom");
+    wsClient.off("message", (event) => {}); // Clean up message listener.
+
+    if (
+      playerData &&
+      playerData.content &&
+      typeof playerData.content === "object" &&
+      playerData.content.player_list !== false
+    ) {
+      // Update the stores
+      playerNameStore.set(playerName);
+      roomNameStore.set(roomName);
+
+      goto("/lobby");
+    } else {
+      errorMessage = "Server not found. Please try with another Room Name";
+      showPopup = true;
+    }
+  };
+
+  function closePopup() {
+    showPopup = false;
+    errorMessage = "";
+  }
 </script>
 
 <main class="min-h-screen flex items-center justify-center">
-  <div class="bg-white p-8 rounded-lg shadow-lg">
+  <div class="bg-white p-8 rounded-lg shadow-lg relative">
     <h1 class="text-3xl font-bold mb-4">Burkes Gambit</h1>
     <form on:submit={handleSubmit}>
       <div class="mb-4">
@@ -82,7 +109,9 @@ const createServer = async () => {
           id="room-name-input"
           type="text"
           class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline"
-          bind:value={roomName}
+          value={roomName}
+          on:input={handleRoomNameChange}
+          maxlength="4"
         />
       </div>
       <div class="mb-4">
@@ -101,23 +130,40 @@ const createServer = async () => {
         />
       </div>
       <button
-      class="bg-blue-500 hover:bg-teal-700 text-white font-bold py-2 px-4 rounded-r-none focus:outline-none focus:shadow-outline"
-      on:click={joinRoom}
-      disabled={!roomName || !playerName}
-      title={!roomName || !playerName ? "Fill in both room name and player name to join a room": ""}
-        style={!roomName || !playerName ? 'opacity: 50%; cursor: not-allowed;' : ''}    
-         >
-      Join Room
-    </button>
-    <button
-      class="bg-green-500 hover:bg-teal-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline"
-      on:click={createServer}
-      disabled={!playerName}
-      title={!playerName ? "Fill in player name to create a new room" : ""}
-      style={!playerName ? 'opacity: 50%; cursor: not-allowed;' : ''}
-          >
-      Create a New Room
-    </button>
+        class="bg-blue-500 hover:bg-teal-700 text-white font-bold py-2 px-4 rounded-r-none focus:outline-none focus:shadow-outline"
+        on:click={joinRoom}
+        disabled={!roomName || !playerName}
+        title={!roomName || !playerName
+          ? "Fill in both room name and player name to join a room"
+          : ""}
+        style={!roomName || !playerName
+          ? "opacity: 50%; cursor: not-allowed;"
+          : ""}
+      >
+        Join Room
+      </button>
+      <button
+        class="bg-green-500 hover:bg-teal-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline"
+        on:click={createServer}
+        disabled={!playerName}
+        title={!playerName ? "Fill in player name to create a new room" : ""}
+        style={!playerName ? "opacity: 50%; cursor: not-allowed;" : ""}
+      >
+        Create a New Room
+      </button>
     </form>
+    {#if showPopup}
+      <div
+        class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center"
+      >
+        <div class="bg-white p-6 rounded shadow-lg">
+          <p class="mb-4 text-lg">{errorMessage}</p>
+          <button
+            class="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline"
+            on:click={closePopup}>Close</button
+          >
+        </div>
+      </div>
+    {/if}
   </div>
 </main>
