@@ -5,12 +5,13 @@
   import { goto } from "$app/navigation";
   import { playerNameStore, roomNameStore } from "../store";
   import { socketData } from "$lib/websocket";
+  import Spaceship from "$lib/images/SpaceShip.png";
 
   let playerName = "";
   let roomName = "";
   let wsClient;
   let lobbystatus = 1;
-  let players = [];
+  let players = { player_list: [] };
   let response;
   let unsubSocketData = () => {};
 
@@ -62,43 +63,91 @@
 
 <title>Lobby: {roomName}</title>
 
-<div class="min-h-screen flex flex-col justify-center items-center bg-gray-100">
-  <div
-    class="w-11/12 sm:w-4/5 md:w-3/4 lg:w-2/3 xl:w-1/2 bg-white rounded-lg shadow-lg"
-  >
-    <div class="px-6 py-8">
-      <h2 class="text-3xl font-semibold text-gray-800 mb-4">
-        Lobby - {roomName}
-      </h2>
-      {#if players.admin === playerName}
-        {#if players.player_list.length === 4}
-          <button
-            class="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded mb-4"
-            on:click={startGame}>Start Game</button
-          >
-        {:else}
-          <p class="text-gray-600 mb-8">Waiting for 4 players to connect</p>
-        {/if}
+<main class="space-background">
+  <div class="form-card flex flex-col">
+    <h2 class="text-3xl font-bold mb-4 text-white">
+      Lobby - {roomName}
+    </h2>
+    {#if players.admin === playerName}
+      {#if players.player_list && players.player_list.length === 4}
+        <button
+          class="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded mb-4"
+          on:click={startGame}>Start Game</button
+        >
       {:else}
-        <p class="text-gray-600 mb-8">
-          Please wait for the host to start the game
+        <p class="block text-white font-bold mb-2">
+          Waiting for 4 players to connect
         </p>
       {/if}
-      <h3 class="text-lg font-medium text-gray-800 mb-2">Players:</h3>
+    {:else}
+      <p class="block text-white font-bold mb-2">
+        Please wait for the host to start the game
+      </p>
+    {/if}
+    <h3 class="block text-white font-bold mb-2">Players:</h3>
 
-      <ul class="grid grid-cols-1 gap-2">
-        {#each [players.player_list] as player}
-          <li class="flex items-center space-x-2">
-            <div class="bg-gray-300 rounded-full h-6 w-6"></div>
-            <span class="text-gray-800">{player}</span>
-          </li>
-        {/each}
-      </ul>
-      <div class="flex justify-center items-center space-x-4 mt-8">
-        <div class="animate-pulse bg-gray-300 rounded-full h-16 w-16"></div>
-        <div class="animate-pulse bg-gray-300 rounded-full h-16 w-16"></div>
-        <div class="animate-pulse bg-gray-300 rounded-full h-16 w-16"></div>
-      </div>
-    </div>
+    <ul class="grid grid-cols-1 gap-2">
+      {#each players.player_list || [] as player}
+        <li class="flex items-center space-x-2">
+          <span class="block text-white mb-2">{player}</span>
+        </li>
+      {/each}
+    </ul>
   </div>
-</div>
+
+  <img class="spaceship" src={Spaceship} alt="Spaceship" />
+</main>
+
+<style>
+  html,
+  body {
+    height: 100%; /* Ensure html and body take up full height */
+    margin: 0; /* Remove default margin */
+  }
+
+  .space-background {
+    min-height: 100vh; /* Use viewport height for consistent sizing */
+    width: 100vw; /* Use viewport width for consistent sizing */
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .form-card {
+    background-color: rgba(0, 0, 0, 0.7); /* Dark and transparent */
+    padding: 2rem;
+    border-radius: 0.5rem;
+    box-shadow:
+      0 4px 6px -1px rgba(0, 0, 0, 0.1),
+      0 2px 4px -1px rgba(0, 0, 0, 0.06);
+    position: relative; /* To position the spaceship */
+    z-index: 10; /* Ensure card is above the background */
+  }
+
+  .spaceship {
+    animation: flying 10s ease-in-out alternate infinite;
+    position: absolute;
+    bottom: -5%; /* Adjust position as needed */
+    left: 34%;
+    transform: translateX(-50%) scaleX(-1); /* Center and rotate */
+    z-index: 1; /* Ensure spaceship is below the card */
+  }
+
+  @keyframes spaceScroller {
+    from {
+      background-position: 0 0;
+    }
+    to {
+      background-position: -1000px 0;
+    }
+  }
+
+  @keyframes flying {
+    from {
+      transform: translate(20px, -20px) scaleX(-1) rotate(-184deg);
+    }
+    to {
+      transform: translate(-10px, 20px) scaleX(-1) rotate(-176deg);
+    }
+  }
+</style>

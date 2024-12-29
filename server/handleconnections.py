@@ -1,4 +1,3 @@
-# server\handleconnections.py
 import json
 import asyncio
 import uuid
@@ -68,7 +67,7 @@ async def handle_connection(websocket, path):
 
                     async with rooms_lock:
                         if room_id not in rooms:
-                            await websocket.send(json.dumps({"error": "Room not found"}))
+                            await websocket.send(json.dumps({"type": "noRoom", "error": "Room not found"}))
                             continue
                         game_room = rooms[room_id]
 
@@ -87,7 +86,7 @@ async def handle_connection(websocket, path):
 
                     async with rooms_lock:
                         if room_id not in rooms:
-                           await websocket.send(json.dumps({"error": "Room not found"}))
+                           await websocket.send(json.dumps({"type": "noRoom", "error": "Room not found"}))
                            continue
                         game_room = rooms[room_id]
 
@@ -103,7 +102,7 @@ async def handle_connection(websocket, path):
 
                     async with rooms_lock:
                         if room_id not in rooms:
-                            await websocket.send(json.dumps({"error": "Room not found"}))
+                            await websocket.send(json.dumps({"type": "noRoom", "error": "Room not found"}))
                             continue
                         game_room = rooms[room_id]
 
@@ -119,15 +118,14 @@ async def handle_connection(websocket, path):
 
                     print(content)
                     room_id = content.get("roomName")
-                    player = content.get("player")
+                    player_name = content.get("player")
 
-                        
                     async with rooms_lock:
                         if room_id not in rooms:
-                            await websocket.send(json.dumps({"error": "Room not found"}))
+                            await websocket.send(json.dumps({"type": "noRoom", "error": "Room not found"}))
                             continue
                         game_room = rooms[room_id]
-                        player_obj = game_room.get_player_by_name(player)
+                        player_obj = game_room.get_player_by_name(player_name)
                     response = {"type": "gameState", "content": game_room.get_game_state(player_obj)}
                     await websocket.send(json.dumps(response))
                 
@@ -142,24 +140,27 @@ async def handle_connection(websocket, path):
 
                     async with rooms_lock:
                         if room_id not in rooms:
-                            await websocket.send(json.dumps({"error": "Room not found"}))
+                            await websocket.send(json.dumps({"type": "noRoom", "error": "Room not found"}))
                             continue
                         
                         game_room = rooms[room_id]
                         player = game_room.get_player_by_name(player_name)
-
                         if player is None:
                             await websocket.send(json.dumps({"error": "Player not found"}))
                             continue
+
 
                         if game_room.current_player != player:
                             await websocket.send(json.dumps({"error": "Not your turn"}))
                             continue
                         
+                        if player.dice and not reroll:
+                            player.return_dice()
+                        
                         if reroll:
                             dice_roll_result = game_room.execute_action(player, Action.REROLL)
                         else:
-                             dice_roll_result = game_room.execute_action(player, Action.PICK_AND_ROLL)
+                            dice_roll_result = game_room.execute_action(player, Action.PICK_AND_ROLL)
                         
                         # Prepare individual responses for each player
                         for p in game_room.players:
@@ -176,15 +177,19 @@ async def handle_connection(websocket, path):
                     player_name = content.get("player")
                     resolve = content.get("resolve", True)
                     target_player_name = content.get("targetPlayer")
+                    damage_heal_value = content.get("damageHealValue", 0)
+                    usingReservedDie = content.get("usingReservedDie")
 
                     async with rooms_lock:
                         if room_id not in rooms:
-                            await websocket.send(json.dumps({"error": "Room not found"}))
+                            await websocket.send(json.dumps({"type": "noRoom", "error": "Room not found"}))
                             continue
                         
                         game_room = rooms[room_id]
                         player = game_room.get_player_by_name(player_name)
                         target_player = game_room.get_player_by_name(target_player_name) if target_player_name else None
+                        game_room.damage_heal_value = damage_heal_value
+                        game_room.target_player = target_player
 
                         if player is None:
                             await websocket.send(json.dumps({"error": "Player not found"}))
@@ -194,18 +199,76 @@ async def handle_connection(websocket, path):
                             await websocket.send(json.dumps({"error": "Not your turn"}))
                             continue
 
-                        if not resolve:
-                             game_room._dice_bag.return_dice(game_room.current_dice)
-                             game_room.current_dice = None;
-                             game_room.next_turn()
-                        else:
-                            if game_room.current_dice is not None:
-                              game_room.use_dice_action(player, game_room.current_dice.face, target_player)
-                              game_room._dice_bag.return_dice(game_room.current_dice)
-                              game_room.current_dice = None;
-                              game_room.next_turn()
+                        cancel_player = game_room._get_cancel_player()
 
-                        # Prepare individual responses for each player
+                        if cancel_player and cancel_player != player:
+                            game_room.cancel_pending_decision_player = cancel_player
+                            # Notify all players about the pending decision
+                            for p in game_room.players:
+                                print(p)
+                                player_state = game_room.get_game_state(p)
+                                response = {"type": "gameState", "content": player_state}
+                                await broadcast_player(p, response)
+                            return  # Stop further processing until the cancel decision is made
+
+                        if not resolve:
+                            # discard this dice and go next turn
+                            if game_room.current_dice is not None:
+                                game_room._dice_bag.return_dice(game_room.current_dice)
+                                game_room.current_dice = None
+                            game_room.next_turn()
+                        else:
+                            if game_room.current_dice is not None and not usingReservedDie:
+                                game_room.use_dice_action(player, game_room.current_dice.face, target_player, damage_heal_value)
+                                game_room._dice_bag.return_dice(game_room.current_dice)
+                                game_room.current_dice = None
+                                game_room.next_turn()
+                            elif game_room.current_player.dice is not None and usingReservedDie:
+                                game_room.use_dice_action(player, game_room.current_player.dice.face, target_player, damage_heal_value)
+                                game_room.current_player.return_dice()
+                                game_room.current_dice = None
+                                game_room.next_turn()
+
+                        # Prepare individual responses
+                        for p in game_room.players:
+                            player_state = game_room.get_game_state(p)
+                            response = {"type": "gameState", "content": player_state}
+                            await broadcast_player(p, response)
+                
+                case "discardDice":
+                    if not isinstance(content, dict):
+                        await websocket.send(json.dumps({"error": "Invalid discardDice content"}))
+                        continue
+
+                    room_id = content.get("roomName")
+                    player_name = content.get("player")
+
+                    async with rooms_lock:
+                        if room_id not in rooms:
+                            await websocket.send(json.dumps({"type": "noRoom", "error": "Room not found"}))
+                            continue
+                        
+                        game_room = rooms[room_id]
+                        player = game_room.get_player_by_name(player_name)
+                        
+
+                        if player is None:
+                            await websocket.send(json.dumps({"error": "Player not found"}))
+                            continue
+                        
+                        if game_room.current_player != player:
+                            await websocket.send(json.dumps({"error": "Not your turn"}))
+                            continue
+                        
+                        if game_room.current_dice is not None:
+                            game_room._dice_bag.return_dice(game_room.current_dice)
+                            game_room.current_dice = None
+                        if game_room.current_player.dice is not None:
+                            game_room.current_player.return_dice()
+                        
+                        game_room.next_turn()
+
+                        # Prepare individual responses
                         for p in game_room.players:
                             player_state = game_room.get_game_state(p)
                             response = {"type": "gameState", "content": player_state}
@@ -221,11 +284,12 @@ async def handle_connection(websocket, path):
                     
                     async with rooms_lock:
                         if room_id not in rooms:
-                            await websocket.send(json.dumps({"error": "Room not found"}))
+                            await websocket.send(json.dumps({"type": "noRoom", "error": "Room not found"}))
                             continue
                             
                         game_room = rooms[room_id]
                         player = game_room.get_player_by_name(player_name)
+                        
 
                         if player is None:
                             await websocket.send(json.dumps({"error": "Player not found"}))
@@ -237,7 +301,7 @@ async def handle_connection(websocket, path):
                         
                         game_room.execute_action(player, Action.RESERVE_DICE)
 
-                        # Prepare individual responses for each player
+                        # Prepare individual responses
                         for p in game_room.players:
                             player_state = game_room.get_game_state(p)
                             response = {"type": "gameState", "content": player_state}
@@ -253,11 +317,12 @@ async def handle_connection(websocket, path):
 
                     async with rooms_lock:
                          if room_id not in rooms:
-                             await websocket.send(json.dumps({"error": "Room not found"}))
+                             await websocket.send(json.dumps({"type": "noRoom", "error": "Room not found"}))
                              continue
 
                          game_room = rooms[room_id]
                          player = game_room.get_player_by_name(player_name)
+
                          if player is None:
                              await websocket.send(json.dumps({"error": "Player not found"}))
                              continue
@@ -267,16 +332,168 @@ async def handle_connection(websocket, path):
                          game_room._dice_bag.return_dice(game_room.current_dice)
                          game_room.current_dice = None
                          
-                         # Prepare individual responses for each player
+                         # Prepare individual responses
                          for p in game_room.players:
                             player_state = game_room.get_game_state(p)
                             response = {"type": "gameState", "content": player_state}
                             await broadcast_player(p, response)
 
-                case "endTurn":
-                    
-                    continue
+                case "stallEngine":
+                    if not isinstance(content, dict):
+                       await websocket.send(json.dumps({"error": "Invalid stallEngine content"}))
+                       continue
+
+                    room_id = content.get("roomName")
+                    player_name = content.get("player")
+
+                    async with rooms_lock:
+                         if room_id not in rooms:
+                             await websocket.send(json.dumps({"type": "noRoom", "error": "Room not found"}))
+                             continue
+
+                         game_room = rooms[room_id]
+                         player = game_room.get_player_by_name(player_name)
+
+                         if player is None:
+                             await websocket.send(json.dumps({"error": "Player not found"}))
+                             continue
+
+                         # Player must be the pending decision player
+                         if game_room.stall_engine_pending_decision_player != player:
+                             await websocket.send(json.dumps({"error": "No pending stall engine decision for this player"}))
+                             continue
+                         
+                         # Remove the dice from player if any
+                         player.return_dice()
+
+                         # Clear pending decision and resume turn
+                         game_room.stall_engine_pending_decision_player = None
+                         game_room.next_turn()
+
+                         # Prepare individual responses
+                         for p in game_room.players:
+                            player_state = game_room.get_game_state(p)
+                            response = {"type": "gameState", "content": player_state}
+                            await broadcast_player(p, response)
                 
+                case "cancelAction":
+                    if not isinstance(content, dict):
+                       await websocket.send(json.dumps({"error": "Invalid cancelAction content"}))
+                       continue
+
+                    room_id = content.get("roomName")
+
+                    async with rooms_lock:
+                         if room_id not in rooms:
+                             await websocket.send(json.dumps({"type": "noRoom", "error": "Room not found"}))
+                             continue
+
+                         game_room = rooms[room_id]
+                         player = game_room.current_player
+                         cancel_player = game_room.cancel_pending_decision_player
+                         
+                         if player is None:
+                             await websocket.send(json.dumps({"error": "Player not found"}))
+                             continue
+                         
+                         # Remove the dice from player if any
+                         if game_room.current_dice is not None:
+                            game_room._dice_bag.return_dice(game_room.current_dice)
+                            game_room.current_dice = None
+                         if game_room.current_player.dice is not None:
+                            game_room.current_player.return_dice()
+                         if cancel_player.dice is not None:
+                            cancel_player.return_dice()
+
+                         # Clear pending decision and resume turn
+                         game_room.cancel_pending_decision_player = None
+                         game_room.next_turn()
+
+                         # Prepare individual responses
+                         for p in game_room.players:
+                            player_state = game_room.get_game_state(p)
+                            response = {"type": "gameState", "content": player_state}
+                            await broadcast_player(p, response)
+                            
+                case "noCancelAction":
+                    if not isinstance(content, dict):
+                       await websocket.send(json.dumps({"error": "Invalid noCancelAction content"}))
+                       continue
+
+                    room_id = content.get("roomName")
+
+
+
+                    async with rooms_lock:
+                        if room_id not in rooms:
+                            await websocket.send(json.dumps({"error": "Room not found"}))
+                            continue
+
+                        game_room = rooms[room_id]
+                        damage_heal_value = game_room.damage_heal_value
+                        target_player = game_room.target_player
+                        game_room.cancel_pending_decision_player = None
+                        player = game_room.current_player
+
+                        if player is None:
+                            await websocket.send(json.dumps({"error": "Player not found"}))
+                            continue
+
+                        if game_room.current_dice is not None and not game_room.current_dice.can_be_rerolled:
+                            game_room.use_dice_action(player, game_room.current_dice.face, target_player, damage_heal_value)
+                            game_room._dice_bag.return_dice(game_room.current_dice)
+                            game_room.current_dice = None
+                            game_room.next_turn()
+                        elif game_room.current_player.dice is not None and game_room.current_dice.can_be_rerolled:
+                            game_room.use_dice_action(player, game_room.current_player.dice.face, target_player, damage_heal_value)
+                            game_room.current_player.return_dice()
+                            game_room.current_dice = None
+                            game_room.next_turn()
+
+                         # Prepare individual responses
+                        for p in game_room.players:
+                            player_state = game_room.get_game_state(p)
+                            response = {"type": "gameState", "content": player_state}
+                            await broadcast_player(p, response)
+
+                case "dontStallEngine":
+                    if not isinstance(content, dict):
+                       await websocket.send(json.dumps({"error": "Invalid dontStallEngine content"}))
+                       continue
+
+                    room_id = content.get("roomName")
+                    player_name = content.get("player")
+
+                    async with rooms_lock:
+                         if room_id not in rooms:
+                             await websocket.send(json.dumps({"type": "noRoom", "error": "Room not found"}))
+                             continue
+
+                         game_room = rooms[room_id]
+                         player = game_room.get_player_by_name(player_name)
+
+                         if player is None:
+                             await websocket.send(json.dumps({"error": "Player not found"}))
+                             continue
+
+                         # Player must be the pending decision player
+                         if game_room.stall_engine_pending_decision_player != player:
+                             await websocket.send(json.dumps({"error": "No pending stall engine decision for this player"}))
+                             continue
+
+                         # Increase power ups
+                         game_room.n_power_ups +=1
+
+                         # Clear pending decision and resume turn
+                         game_room.stall_engine_pending_decision_player = None
+                         game_room.next_turn()
+
+                         # Prepare individual responses
+                         for p in game_room.players:
+                            player_state = game_room.get_game_state(p)
+                            response = {"type": "gameState", "content": player_state}
+                            await broadcast_player(p, response)
+
                 case "submitVote":
                     if not isinstance(content, dict):
                        await websocket.send(json.dumps({"error": "Invalid submitVote content"}))
@@ -288,7 +505,7 @@ async def handle_connection(websocket, path):
                     
                     async with rooms_lock:
                          if room_id not in rooms:
-                            await websocket.send(json.dumps({"error": "Room not found"}))
+                            await websocket.send(json.dumps({"type": "noRoom", "error": "Room not found"}))
                             continue
                          game_room = rooms[room_id]
                          player = game_room.get_player_by_name(player_name)
@@ -298,7 +515,7 @@ async def handle_connection(websocket, path):
                          
                          game_room.add_vote(player, vote)
 
-                         # Prepare individual responses for each player
+                         # Prepare individual responses
                          for p in game_room.players:
                             player_state = game_room.get_game_state(p)
                             response = {"type": "gameState", "content": player_state}
@@ -313,13 +530,12 @@ async def handle_connection(websocket, path):
 
                     async with rooms_lock:
                         if room_id not in rooms:
-                            await websocket.send(json.dumps({"error": "Room not found"}))
+                            await websocket.send(json.dumps({"type": "noRoom", "error": "Room not found"}))
                             continue
                         game_room = rooms[room_id]
                     
                     player_sacrificed = game_room.resolve_end_game()
                     
-                    # Prepare individual responses for each player
                     for p in game_room.players:
                          player_state = game_room.get_game_state(p)
                          response = {"type": "gameState", "content": player_state, "sacrificedPlayer": player_sacrificed.name if player_sacrificed else None }
@@ -327,7 +543,6 @@ async def handle_connection(websocket, path):
 
                 case _:
                     await websocket.send(json.dumps({"error": "Unknown message type"}))
-                    
 
     except websockets.exceptions.ConnectionClosed:
         print("Connection closed")

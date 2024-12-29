@@ -3,11 +3,12 @@
   import webSocket from "$lib/websocket";
   import { socketData } from "$lib/websocket";
   import { playerNameStore, roomNameStore } from "../store";
+  import { goto } from "$app/navigation";
 
   import Navbar from "./components/Navbar.svelte";
   import GameStatus from "./components/GameStatus.svelte";
   import Character from "./components/Character.svelte";
-  import Action from "./components/Action.svelte";
+  import ActionContainer from "./components/ActionComponents/ActionContainer.svelte";
 
   import "tailwindcss/tailwind.css";
 
@@ -24,6 +25,7 @@
   let wsOpen = false;
   let wsClient; // Declare wsClient outside onMount
   let team;
+  let endGamePowerUps;
 
   playerNameStore.subscribe((value) => {
     playerName = value;
@@ -47,6 +49,9 @@
           current_player = gameLoopData.current_player;
           latestAction = gameLoopData.latest_action; // Add this line
           team = gameLoopData.self.team;
+          endGamePowerUps = gameLoopData.end_game_power_ups;
+        } else if (response.type === "noRoom") {
+          goto("/");
         }
       } catch (error) {
         console.log(error);
@@ -95,9 +100,9 @@
 
 {#if gameLoopData}
   <Navbar {roomName} {playerName} {character} {players} {team} />
-  <GameStatus {numberOfPowerups} {health} {current_player} />
+  <GameStatus {numberOfPowerups} {health} {current_player} {endGamePowerUps} />
 
-  <Action {gameLoopData} {playerName} {roomName} />
+  <ActionContainer {gameLoopData} {playerName} {roomName} />
 {/if}
 {#if isCharacterShown}
   <Character {character_text} {character} />

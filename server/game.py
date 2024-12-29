@@ -1,8 +1,7 @@
-# file: server\game.py
 from asyncio import wait
 from enum import Enum, IntEnum
 from datetime import datetime
-from typing import Optional, Self
+from typing import Optional, List
 from dataclasses import dataclass
 from dices import DiceBag, Dice, Face
 from uuid import uuid4
@@ -93,7 +92,7 @@ class Player:
     @property
     def has_dice(self) -> bool:
         return self.dice is not None
-    
+
     @property
     def get_scan_result(self):
         return self.scan_result
@@ -102,31 +101,30 @@ class Player:
     def get_id_check_result(self):
         return self.id_check_result
 
-    def set_team(self, team: Team) -> Self:
+    def set_team(self, team: Team):
         self.team = team
         return self
 
-    def set_role(self, role: Role) -> Self:
+    def set_role(self, role: Role):
         self.role = role
         return self
 
-    def set_infected(self, is_infected) -> Self:
+    def set_infected(self, is_infected):
         self.is_infected = is_infected
         return self
 
     def reserve_dice(self, dice: Dice):
         self.dice = dice
-
+    
     def return_dice(self) -> Optional[Dice]:
         if not self.has_dice:
             print("Error: player has no dice")
             return None
-
         dice = self.dice
         self.dice = None
         return dice
     
-    def set_quarantined(self, is_quarantined: bool) -> Self:
+    def set_quarantined(self, is_quarantined: bool):
         self.is_quarantined = is_quarantined
         return self
     
@@ -136,7 +134,7 @@ class Player:
     def set_id_check_result(self, result: str):
          self.id_check_result = result
     
-    def set_dead(self) -> Self:
+    def set_dead(self):
         self.is_dead = True
         return self
 
@@ -155,10 +153,10 @@ class Player:
             "health": self.health,
             "last_action": self.last_action.timestamp(),
             "role_description": CHARACTERS.get(self.role.name, "") if self.role else "",
-            "used_power": self.used_power,  # add this to track used power
+            "used_power": self.used_power,
             "is_dead": self.is_dead,
             "is_quarantined": self.is_quarantined,
-
+            "infected": self.is_infected
         }
          if not only_public and self.team is not None:
              state["id"] = (self.id,)
@@ -181,13 +179,21 @@ class GameRoom:
         self.n_power_ups = 0
         self.current_dice: Optional[Dice] = None
         self.latest_action: Optional[tuple[str, str]] = None
-        self.stall_engine_active = False
         self.quarantined_player: Optional[Player] = None
+        self.quarantine_turns_left: int = 0
+        self.quarantine_initiator: Optional[Player] = None
         self.end_game_votes: dict[str,str] = {}
         self.parasite_cards_order: list[Player] = []
         self.last_scan: Optional[tuple[str, str]] = None
         self.last_id_check: Optional[tuple[str, str]] = None
         self.history = History()
+        self.end_game_power_ups = 0
+        self.target_player = Player
+        self.damage_heal_value = int
+
+        # New attributes for pending decision
+        self.stall_engine_pending_decision_player: Optional[Player] = None
+        self.cancel_pending_decision_player: Optional[Player] = None
 
     @property
     def id(self):
@@ -199,6 +205,9 @@ class GameRoom:
 
     @property
     def current_player(self) -> Player:
+        # If no players, handle gracefully
+        if not self.players:
+            return None
         return self.players[self._turn % len(self.players)]
     
     @property
@@ -208,18 +217,27 @@ class GameRoom:
     @property
     def admin(self) -> Player:
         return self._admin
-
+ 
     def next_turn(self):
-         if self.quarantined_player:
-           self.quarantined_player.set_quarantined(False)
-           self.quarantined_player= None
-         self._turn += 1
-         self.current_dice = None
-         print(self.current_player.name)
-         print(self.current_player.health)
-         print(self.current_player.is_dead)
-         if self.current_player.is_dead:
-              self.next_turn()
+        # If there's a pending decision, do not advance
+        if self.stall_engine_pending_decision_player is not None or self.cancel_pending_decision_player is not None:
+            return
+
+        if self.quarantined_player:
+            self.quarantine_turns_left -= 1
+            if self.quarantine_turns_left <= 0:
+                self.quarantined_player.set_quarantined(False)
+                self.quarantined_player = None
+                self.quarantine_initiator = None
+
+        self._turn += 1
+        self.current_dice = None
+
+        # If current player is dead or quarantined, skip
+        # Potentially infinite recursion if all are dead/quarantined,
+        # but assuming normal game conditions
+        if self.current_player and (self.current_player.is_dead or self.current_player.is_quarantined):
+            self.next_turn()
 
     def add_player(self, player_name: str, websocket=None) -> Player:
         player = Player(player_name, websocket=websocket)
@@ -255,59 +273,34 @@ class GameRoom:
                 return 5
             case _:
                 raise Exception("Wrong number of players")
-    
+
     def _reshuffle_parasites(self):
-        infected = None
-        clean = []
-
+        if not self.players: 
+            print("Error: No players in game.")
+            return
+        new_infected = random.choice(self.players)
         for player in self.players:
-            if player.is_infected:
-                infected = player
-            else:
-                 clean.append(player)
-        
-        random.shuffle(clean)
-
-        if infected is None:
-           print("Error: no infected player found")
-           return
-
-        new_parasites = [infected] + clean[1:]
-        
-        for player in self.players:
-            if player == infected:
-                player.set_infected(True)
-            elif player in new_parasites:
-                 player.set_infected(False)
-            else:
-                player.set_infected(False)
-        
-        self.parasite_cards_order = self.players.copy()
-    
-    def _set_parasite_order(self):
-        self.parasite_cards_order = self.players.copy()
+            player.set_infected(player == new_infected)
 
     def start_game(self):
         if not 4 <= len(self.players) <= 8:
-            print(
-                f"Error: Game only support 4-8 players, current players {len(self.players)}"
-            )
+            print(f"Error: Game only supports 4-8 players, current players {len(self.players)}")
             return
         if self._state == GameState.STARTED:
             print("Error: The game has already started")
             return
+        
+        self.end_game_power_ups = self._get_n_power_ups_endgame()
 
-        # assign team
+        # assign teams
         random.shuffle(self._players)
         n_evil = self._get_n_evil_team()
         n_good = len(self.players) - n_evil
         for n, team in enumerate([Team.EVIL] * n_evil + [Team.GOOD] * n_good):
             self.players[n].set_team(team)
 
-        # assign captain to the first player
+        # assign roles
         self.players[0].set_role(Role.CAPTAIN)
-
-        # Create a list of all other roles (excluding CAPTAIN)
         all_roles = [
             Role.HACKER, 
             Role.MARINE, 
@@ -320,14 +313,12 @@ class GameRoom:
             Role.ENGINEER
         ]
 
-        # Shuffle and assign these roles to the other players
         random.shuffle(all_roles)
         for player, role in zip(self.players[1:], all_roles):
             player.set_role(role)
 
         # assign infected player
         random.choice(self.players).set_infected(True)
-        self._set_parasite_order()
         assert all(p.team is not None for p in self.players)
         assert all(p.role is not None for p in self.players)
         assert self.current_player.role == Role.CAPTAIN
@@ -339,12 +330,13 @@ class GameRoom:
         if player != self.current_player and action != Action.CHARACTER_POWER:
             print(f"Error: not {player.name}'s turn")
             return
-        if self._state != GameState.STARTED and self._state != GameState.END_GAME :
-            print(f"Error: game is not yet started")
+        if self._state not in [GameState.STARTED, GameState.END_GAME]:
+            print(f"Error: game is not yet started or is finished.")
             return
         
         if player.is_dead:
             print(f"Error: {player.name} is dead")
+            return
         
         if player.is_quarantined and action != Action.CHARACTER_POWER:
            print(f"Error: {player.name} is quarantined")
@@ -358,18 +350,24 @@ class GameRoom:
         match action:
             case Action.PICK_AND_ROLL:
                 self.current_dice = self._dice_bag.pick_dice()
-                self.current_dice.rolled_by = player.name # Added this line
+                self.current_dice.rolled_by = player.name
                 face = self.current_dice.roll()
                 self.history.add_event(HistoryEvent(player.name, action, face))
+
+
                 if face == Face.ENGINE_POWER_UP:
-                    if not self.stall_engine_active:
+                    stall_engine_player = self._get_stall_engine_player()
+                    if stall_engine_player is None:
                         self.n_power_ups += 1
-                    else:
-                        self.stall_engine_active = False
-                    self.next_turn()
-                    if self.n_power_ups >= self._get_n_power_ups_endgame():
-                        self._state = GameState.END_GAME;
-                return
+                        # normal next turn if no pending decision
+                        if self.n_power_ups >= self._get_n_power_ups_endgame():
+                            self._state = GameState.END_GAME
+                        else:
+                            self.next_turn()
+                    return
+            
+
+
 
             case Action.REROLL:
                 if self.current_dice is None:
@@ -383,29 +381,29 @@ class GameRoom:
                 face = self.current_dice.reroll()
                 self.history.add_event(HistoryEvent(player.name, action, face))
                 if face == Face.ENGINE_POWER_UP:
-                    if not self.stall_engine_active:
+                    stall_engine_player = self._get_stall_engine_player()
+                    if stall_engine_player is None:
                         self.n_power_ups += 1
+                        if self.n_power_ups >= self._get_n_power_ups_endgame():
+                            self._state = GameState.END_GAME
+                        else:
+                            self.next_turn()
                     else:
-                        self.stall_engine_active = False
-                    self.next_turn()
-                    if self.n_power_ups >= self._get_n_power_ups_endgame():
-                        self._state = GameState.END_GAME;
+                        self.stall_engine_pending_decision_player = stall_engine_player
+
 
             case Action.USE_RESERVE_DICE:
                 if player.dice is None:
                     print("Error: player has no reserved_dice")
                     return
-
                 self.use_dice_action(player, player.dice.face, player)
 
             case Action.RESERVE_DICE:
                 if self.current_dice is None:
                     print("Error: no current dice to reserve")
                     return
-                
                 if player.dice is not None:
-                  self._dice_bag.return_dice(player.return_dice())
-
+                    self._dice_bag.return_dice(player.return_dice())
                 player.reserve_dice(self.current_dice)
                 self.history.add_event(HistoryEvent(player.name, action, self.current_dice.face))
                 self.next_turn()
@@ -413,16 +411,36 @@ class GameRoom:
             case Action.END_TURN:
                 self.next_turn()
                 return
-    
+
+    def _get_stall_engine_player(self) -> Optional[Player]:
+        # In the old code, we looked for a player holding a stall engine dice
+        stall_players = [player for player in self.players if player.dice is not None and player.dice.face == Face.STALL_ENGINE]
+        if len(stall_players) == 0:
+            return None
+        elif len(stall_players) == 1:
+            return stall_players[0]
+        else:
+            # If multiple stall players, pick the one who acted longest ago
+            return min(stall_players, key=lambda player: player.last_action)
+        
+    def _get_cancel_player(self) -> Optional[Player]:
+        # In the old code, we looked for a player holding a stall engine dice
+        stall_players = [player for player in self.players if player.dice is not None and player.dice.face == Face.CANCEL]
+        if len(stall_players) == 0:
+            return None
+        elif len(stall_players) == 1:
+            return stall_players[0]
+        else:
+            # If multiple stall players, pick the one who acted longest ago
+            return min(stall_players, key=lambda player: player.last_action)
+
     def add_vote(self, player: Player, vote: str):
         if player.is_dead:
             print("Error: Dead players cannot vote")
             return
-
         if vote not in [p.name for p in self.players]:
-           print("Error: Trying to vote to non-existent player")
+           print("Error: Trying to vote for non-existent player")
            return
-        
         self.end_game_votes[player.name] = vote
 
     def resolve_end_game(self):
@@ -434,91 +452,83 @@ class GameRoom:
              print("Error: not everyone has voted")
              return
 
-        
         votes = {}
-
         for vote_player in self.end_game_votes.values():
            if vote_player not in votes:
-              votes[vote_player] = 0;
+              votes[vote_player] = 0
            votes[vote_player] +=1
         
         max_votes = 0
         most_voted_players = []
-        for player, vote_count in votes.items():
+        for player_name, vote_count in votes.items():
             if vote_count > max_votes:
                max_votes = vote_count
-               most_voted_players = [player]
+               most_voted_players = [player_name]
             elif vote_count == max_votes:
-                 most_voted_players.append(player)
+                 most_voted_players.append(player_name)
         
         if len(most_voted_players) == 0:
-             return None;
-
+             return None
         if len(most_voted_players) > 1:
-            if not any(p.role == Role.CAPTAIN and not p.is_dead for p in self.players) :
-                return None;
+            # captain breaks ties
+            if not any(p.role == Role.CAPTAIN and not p.is_dead for p in self.players):
+                return None
             else:
                 captain = next(p for p in self.players if p.role == Role.CAPTAIN and not p.is_dead)
                 player_to_sacrifice = next(p for p in self.players if p.name == self.end_game_votes[captain.name])
-                return player_to_sacrifice;
+                return player_to_sacrifice
         else:
-            return next(p for p in self.players if p.name == most_voted_players[0] )
+            return next(p for p in self.players if p.name == most_voted_players[0])
 
-    def use_dice_action(self, player: Player, face: Face, target_player = None):
-            self.history.add_event(HistoryEvent(player.name, Action.USE_DICE_ACTION, face, target_player.name if target_player else None))
-            match face:
-                case Face.DAMAGE:
-                     if target_player is None:
-                       self._apply_damage_or_heal(player, -1)
-                     else:
-                       self._apply_damage_or_heal(target_player, -1)
-                case Face.PARSITE_SCAN_LR:
-                    self.scan_parasite(player, target_player)
-                case Face.ENGINE_POWER_UP:
-                     print("Error: Engine power up can't be activated in this stage")
-                     pass
-
-                case Face.STALL_ENGINE:
-                    self.stall_engine_active = True
-                    #  logic for setting stall engine
-                    pass
-                case Face.RESHUFFLE:
-                     self._reshuffle_parasites()
-                 
-                case Face.ID_CHECK:
-                     self.id_check(player, target_player)
-                case Face.INSTA_KILL:
-                     if target_player is not None:
-                       self._apply_damage_or_heal(target_player, -3) # for now kill self
-                case Face.QUARANTINE:
-                     if target_player is not None:
-                        self.quarantined_player = target_player.set_quarantined(True)
-                case Face.CANCEL:
-                     print(f"{player.name} cancelled something")
-                    # Logic for cancel action
-                     pass
-                case Face.PARSITE_SCAN_ANY:
-                    self.scan_parasite(player, target_player)
+    def use_dice_action(self, player: Player, face: Face, target_player = None, damage_heal_value = 0):
+        self.history.add_event(HistoryEvent(player.name, Action.USE_DICE_ACTION, face, target_player.name if target_player else None))
+        match face:
+            case Face.DAMAGE:
+                 if target_player is None:
+                   self._apply_damage_or_heal(player, damage_heal_value)
+                 else:
+                   self._apply_damage_or_heal(target_player, damage_heal_value)
+            case Face.PARSITE_SCAN_LR:
+                self.scan_parasite(player, target_player)
+            case Face.ENGINE_POWER_UP:
+                 print("Error: Engine power up can't be activated in this stage")
+                 pass
+            case Face.STALL_ENGINE:
+                 # Just here as placeholder, actual logic handled on roll
+                 pass
+            case Face.RESHUFFLE:
+                 self._reshuffle_parasites()
+            case Face.ID_CHECK:
+                 self.id_check(player, target_player)
+            case Face.INSTA_KILL:
+                 if target_player is not None:
+                   self._apply_damage_or_heal(target_player, -3)
+            case Face.QUARANTINE:
+                 if target_player is not None:
+                    self.quarantined_player = target_player.set_quarantined(True)
+                    self.quarantine_turns_left = len(self.players)
+                    self.quarantine_initiator = player
+            case Face.CANCEL:
+                 # handled on roll action, should not be here
+                 pass
+            case Face.PARSITE_SCAN_ANY:
+                self.scan_parasite(player, target_player)
 
     def scan_parasite(self, player: Player, target_player: Player):
-            if target_player is None:
-                print("Error: No target player to scan")
-                return
-
-            self.last_scan = (player.name, target_player.name)  # Log who initiated the scan and who was scanned
-            scan_result = f"{'Infected' if target_player.is_infected else 'Clean'}"
-        
-            player.set_scan_result(scan_result) # Store scan result for the active player
-            
-            return scan_result  # Return the scan result
+        if target_player is None:
+            print("Error: No target player to scan")
+            return
+        self.last_scan = (player.name, target_player.name)
+        scan_result = "Infected" if target_player.is_infected else "Clean"
+        player.set_scan_result(scan_result)
+        return scan_result
 
     def id_check(self, player: Player, active_player: Optional[Player]):
         if active_player is None:
             print("Error: No player selected to id check")
             return
-
         self.last_id_check = (player.name, active_player.name)
-        player.set_id_check_result(f"{active_player.name}'s team is: {active_player.team.name if active_player.team else 'No team'}")
+        player.set_id_check_result(f"{active_player.team.name if active_player.team else 'No team'}")
 
     def _apply_damage_or_heal(self, player:Player, damage_amount:int):
         player.health += damage_amount
@@ -531,7 +541,7 @@ class GameRoom:
             "state": self._state.name,
             "n_power_ups": self.n_power_ups,
             "self": player.get_state(only_public = False),
-            "current_player": self.current_player.name,
+            "current_player": self.current_player.name if self.current_player else None,
             "roomId": self.id,
             "current_dice": self.current_dice.get_state() if self.current_dice is not None else None,
             "players": [p.get_state(only_public = True) for p in self.players],
@@ -539,10 +549,13 @@ class GameRoom:
             "end_game_votes": self.end_game_votes,
             "is_end_game": self.is_end_game,
             "last_scan": self.last_scan,
-             "scan_result": player.get_scan_result if not player.get_scan_result is None else False,
+            "scan_result": player.get_scan_result if not player.get_scan_result is None else False,
             "last_id_check": self.last_id_check,
-             "id_check_result": player.get_id_check_result if not player.get_id_check_result is None else False,
-            "history": self.history.get_public_events(),  
+            "id_check_result": player.get_id_check_result if not player.get_id_check_result is None else False,
+            "history": self.history.get_public_events(),
+            "end_game_power_ups": self.end_game_power_ups,
+            "stall_engine_pending_decision_player": self.stall_engine_pending_decision_player.name if self.stall_engine_pending_decision_player else None,
+            "cancel_pending_decision_player": self.cancel_pending_decision_player.name if self.cancel_pending_decision_player else None,
         }
 
     def get_players_json(self) -> str:
@@ -565,23 +578,24 @@ class GameRoom:
             }
 
 if __name__ == "__main__":
+    # Example usage (not run in production)
     game = GameRoom("1")
     p1 = game.add_player("1")
     p2 = game.add_player("2")
     p3 = game.add_player("3")
     p4 = game.add_player("4")
     game.start_game()
-    print(json.dumps(p1.get_state()))
-    assert game._admin == p1
-    game.execute_action(p1, Action.PICK_AND_ROLL)
-    game.execute_action(p1, Action.USE_RESERVE_DICE)
-    game.use_dice_action(p1,Face.PARSITE_SCAN_LR)
-    game.use_dice_action(p1,Face.ID_CHECK,p2)
-    game._apply_damage_or_heal(p2,-2) # Kill p2
-    game.execute_action(p1, Action.END_TURN)
+    
+    p1 = game.get_player_by_name("1")
+    p2 = game.get_player_by_name("2")
+    p3 = game.get_player_by_name("3")
+    p4 = game.get_player_by_name("4")
 
-    print(p1.scan_result)
-    print(p1.id_check_result)
-    print(game.get_players_json())
-    print(json.dumps(game.get_game_state(p1)))
-    assert game.current_player != p2 # It should go to p3 since p2 is dead
+    print(json.dumps(p1.get_state()))
+    assert game.admin == p1
+    current_player = game.current_player
+    game.execute_action(current_player, Action.PICK_AND_ROLL)
+    game.execute_action(current_player, Action.RESERVE_DICE)  
+    current_player = game.current_player
+    game.execute_action(current_player, Action.PICK_AND_ROLL)
+    game.execute_action(current_player, Action.END_TURN)

@@ -17,6 +17,7 @@ export default function websocket() {
 
         socketInstance.on('error', (error) => {
             console.error("websocket error:", error);
+            socketData.set(error); // Set to the store to update any component.
         });
 
         socketInstance.on('close', () => {
@@ -46,6 +47,9 @@ export function waitForMessage(type) {
             const data = JSON.parse(event.data);
             if (data.type === type) {
                 resolve(data);
+            }
+            else {
+                console.log("Failed to recieve!")
             }
         };
         socketInstance.on('message', handleMessage);
